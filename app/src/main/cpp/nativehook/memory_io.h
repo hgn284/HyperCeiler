@@ -24,11 +24,15 @@ namespace nhk {
 // One finite retry budget is shared by syscall, maps and fallback reads.
 inline bool readable_memory_ranges(uintptr_t address, size_t size,
     std::vector<ReadRegion>& out, unsigned& interruptions) {
+    // Fixed kernel path, opened directly; no pathname check/use window.
+    // nosemgrep: c_misc_rule-fopen-open
     int fd = open("/proc/self/maps",O_RDONLY|O_CLOEXEC);
     if (fd < 0) return false;
     try {
         std::string text; std::array<char,4096> chunk{}; bool good=true;
         for (;;) {
+            // Each read uses the whole array; the append below enforces the total cap.
+            // Flawfinder: ignore
             const ssize_t n=read(fd,chunk.data(),chunk.size());
             if (n<0 && errno==EINTR && ++interruptions<=32) continue;
             if (n<0) { good=false; break; }

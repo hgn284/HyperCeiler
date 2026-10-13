@@ -21,12 +21,16 @@ struct SourceWordOps {
             && page.offset + (target - page.begin) == source.file_offset;
     }
     bool Page(uintptr_t address, size_t size, CodePage& out) {
+        // Fixed kernel path, opened directly; no pathname check/use window.
+        // nosemgrep: c_misc_rule-fopen-open
         int fd = open("/proc/self/maps", O_RDONLY | O_CLOEXEC);
         if (fd < 0) return false;
         try {
             std::string text; std::array<char,4096> chunk{}; bool good = true;
             unsigned interruptions = 0;
             for (;;) {
+                // Each read uses the whole array; the append below enforces the total cap.
+                // Flawfinder: ignore
                 const ssize_t n = read(fd,chunk.data(),chunk.size());
                 if (n < 0 && errno == EINTR && ++interruptions <= 32) continue;
                 if (n < 0) { good = false; break; }

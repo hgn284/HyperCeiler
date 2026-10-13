@@ -8,11 +8,11 @@
 namespace home_layout {
 struct BackGestureConfig { int height = 60; int width = 100; };
 constexpr int32_t kBackGestureMagic = 0x48434231;
-template<class Read> bool read_back_gesture(Read read, BackGestureConfig &out, bool optional = true) {
+template<class Read> bool read_back_gesture(Read reader, BackGestureConfig &out, bool optional = true) {
     out = {};
     int32_t magic = 0, height = 0, width = 0;
-    if (!read(magic)) return optional;
-    if (magic != kBackGestureMagic || !read(height) || !read(width)
+    if (!reader(magic)) return optional;
+    if (magic != kBackGestureMagic || !reader(height) || !reader(width)
         || height < 10 || height > 100 || width < 100 || width > 400) return false;
     out = {height, width}; return true;
 }

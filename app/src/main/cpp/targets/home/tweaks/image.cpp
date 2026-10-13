@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <cerrno>
+#include <charconv>
 #include <limits>
 #include <array>
 #include <sstream>
@@ -22,33 +23,54 @@ namespace {
 struct MapRow { nhk::FileMapping map; bool readable; };
 // One bounded, complete snapshot per discovery. No static mutable inventory or timer.
 bool ReadMaps(std::string& text) {
+    // Fixed kernel path, opened directly; no pathname check/use window.
+    // nosemgrep: c_misc_rule-fopen-open
     const int fd=open("/proc/self/maps",O_RDONLY|O_CLOEXEC);
     if(fd<0)return false;
-    text.clear();std::array<char,4096> chunk{};bool good=true;
-    for(;;){const ssize_t n=read(fd,chunk.data(),chunk.size());
-        if(n<0&&errno==EINTR)continue;
-        if(n<0){good=false;break;}
-        if(n==0)break;
-        if(size_t(n)>chunk.size()||size_t(n)>2*1024*1024-text.size()){good=false;break;}
-        text.append(chunk.data(),size_t(n));
+    std::string snapshot;std::array<char,4096> chunk{};bool good=true;
+    try {
+        unsigned interruptions=0;
+        for(;;){
+            // Each read starts at the buffer base; append stays within the 2 MiB cap.
+            // Flawfinder: ignore
+            const ssize_t n=read(fd,chunk.data(),chunk.size());
+            if(n<0&&errno==EINTR&&++interruptions<=32)continue;
+            if(n<0){good=false;break;}
+            if(n==0)break;
+            if(size_t(n)>chunk.size()||size_t(n)>2*1024*1024-snapshot.size()){good=false;break;}
+            snapshot.append(chunk.data(),size_t(n));
+        }
+    } catch (...) {
+        good=false;
     }
-    close(fd);
-    return good&&!text.empty()&&text.back()=='\n';
+    const int closed=close(fd); // Linux close(EINTR) must not be retried.
+    if(!good||closed!=0||snapshot.empty()||snapshot.back()!='\n')return false;
+    text=std::move(snapshot);return true;
 }
 bool MapSnapshot(std::vector<MapRow>& rows) {
     std::string text;if(!ReadMaps(text))return false;
+    const auto number=[](const std::string& value,int base,uint64_t& out){
+        if(value.empty())return false;
+        const auto parsed=std::from_chars(value.data(),value.data()+value.size(),out,base);
+        return parsed.ec==std::errc{}&&parsed.ptr==value.data()+value.size();
+    };
     std::istringstream stream(text);std::string line;size_t count=0;
     while(std::getline(stream,line)){
         if(++count>16384||line.find('\0')!=std::string::npos)return false;
-        unsigned long long b=0,e=0,off=0,ino=0;unsigned maj=0,min=0;char perms[5]{};int at=0;
-        if(sscanf(line.c_str(),"%llx-%llx %4s %llx %x:%x %llu %n",&b,&e,perms,&off,&maj,&min,&ino,&at)!=7
-            ||at<=0||size_t(at)>line.size())return false;
-        if(b>=e||e>UINTPTR_MAX||strlen(perms)!=4
+        std::istringstream fields(line);std::string range,perms,offset,device,inode;
+        if(!(fields>>range>>perms>>offset>>device>>inode))return false;
+        const auto dash=range.find('-'),colon=device.find(':');
+        uint64_t b=0,e=0,off=0,ino=0,maj=0,min=0;
+        if(dash==std::string::npos||colon==std::string::npos
+            ||!number(range.substr(0,dash),16,b)||!number(range.substr(dash+1),16,e)
+            ||!number(offset,16,off)||!number(device.substr(0,colon),16,maj)
+            ||!number(device.substr(colon+1),16,min)||!number(inode,10,ino)
+            ||maj>UINT32_MAX||min>UINT32_MAX||b>=e||e>UINTPTR_MAX||perms.size()!=4
             ||(perms[0]!='r'&&perms[0]!='-')||(perms[1]!='w'&&perms[1]!='-')
             ||(perms[2]!='x'&&perms[2]!='-')||(perms[3]!='p'&&perms[3]!='s'))return false;
-        std::string path=line.substr(size_t(at));
+        std::string path;std::getline(fields>>std::ws,path);
         if(path.empty()||path[0]!='/')continue;
-        rows.push_back({{uintptr_t(b),uintptr_t(e),off,maj,min,ino,perms[2]=='x',perms[1]=='w',path},perms[0]=='r'});
+        rows.push_back({{uintptr_t(b),uintptr_t(e),off,uint32_t(maj),uint32_t(min),ino,perms[2]=='x',perms[1]=='w',path},perms[0]=='r'});
     }
     return !rows.empty();
 }
@@ -63,7 +85,10 @@ bool StatMatches(const Image& image,const struct stat& st) {
 bool MappedImage(const std::vector<MapRow>& inventory,const std::string& path,
     uint64_t origin,uint64_t bytes,bool apk,Image& image) {
     if(path.empty()||path.size()>=sizeof(image.path)||origin>UINT64_MAX-bytes||!bytes)return false;
-    Image result{};memcpy(result.path,path.c_str(),path.size()+1);
+    Image result{};
+    // path.size() is below this fixed array's capacity; c_str() supplies the terminator.
+    // nosemgrep: c_buffer_rule-memcpy-CopyMemory
+    memcpy(result.path,path.c_str(),path.size()+1);
     result.fromApkEntry=apk;result.apkEntryOffset=origin;result.fileViewBytes=bytes;
     std::vector<nhk::FileMapping> maps;
     for(const auto& row:inventory){const auto& m=row.map;
@@ -132,7 +157,8 @@ bool MappedImage(const std::vector<MapRow>& inventory,const std::string& path,
     // Every file-backed load byte must be mapped; page padding is not trusted code.
     for(const auto& p:loads){uintptr_t cursor=result.base+p.vaddr,target=cursor+p.filesz;
         for(size_t i=0;i<merged&&cursor<target;++i){const auto& s=result.segments[i];
-            if(s.begin>cursor)break;if(s.end>cursor)cursor=std::min(s.end,target);}
+            if(s.begin>cursor)break;
+            if(s.end>cursor)cursor=std::min(s.end,target);}
         if(cursor!=target)return false;
     }
     bool sameHeader=false;
@@ -142,7 +168,7 @@ bool MappedImage(const std::vector<MapRow>& inventory,const std::string& path,
     if(!sameHeader)return false;
     image=result;return true;
 }
-struct SearchRequest { const char* basename;std::string path;uintptr_t bias=0;unsigned matches=0; };
+struct SearchRequest { const char* basename;std::string path{};uintptr_t bias=0;unsigned matches=0; };
 int CollectCallback(struct dl_phdr_info* info,size_t,void* opaque) {
     auto& req=*static_cast<SearchRequest*>(opaque);
     if(!info||!info->dlpi_name)return 0;
@@ -166,8 +192,13 @@ bool FindImageByName(const char* basename,Image* out) {
         const auto stored=nhk::zip_stored_entry(path,entry);
         if(!stored||!MappedImage(rows,path,stored->first,stored->second,true,image))return false;
     }else{
-        struct stat st{};const int fd=open(req.path.c_str(),O_RDONLY|O_CLOEXEC);
-        if(fd<0)return false;const bool good=fstat(fd,&st)==0&&S_ISREG(st.st_mode)&&st.st_size>0;close(fd);
+        // Inspect the opened descriptor; MappedImage rechecks its inode against the maps snapshot.
+        // nosemgrep: c_misc_rule-fopen-open
+        struct stat st{};const int fd=open(req.path.c_str(),O_RDONLY|O_CLOEXEC|O_NONBLOCK);
+        if(fd<0)return false;
+        const bool good=fstat(fd,&st)==0&&S_ISREG(st.st_mode)&&st.st_size>0;
+        const int closed=close(fd);
+        if(closed!=0)return false;
         if(!good||!MappedImage(rows,req.path,0,uint64_t(st.st_size),false,image))return false;
     }
     if(image.base!=req.bias)return false;
@@ -183,7 +214,8 @@ bool FindImageFromApkMaps(const char* apkMarker,const char* libName,Image* out) 
     for(const auto& path:paths){const auto stored=nhk::zip_stored_entry(path,libName);if(!stored)continue;
         Image image{};
         if(MappedImage(rows,path,stored->first,stored->second,true,image)){
-            if(++found>1)return false;chosen=image;
+            if(++found>1)return false;
+            chosen=image;
         }
     }
     if(found!=1)return false;
@@ -206,7 +238,9 @@ bool ReadImageFile(const Image& image,uint64_t offset,void* out,size_t length) {
     if(origin>maxOffset||offset>maxOffset-origin)return false;
     const uint64_t fileOffset=origin+offset;
     if(uint64_t(length)>maxOffset-fileOffset)return false;
-    const int fd=open(image.path,O_RDONLY|O_CLOEXEC);if(fd<0)return false;
+    // StatMatches validates the pinned descriptor against the source device/inode and extent.
+    // nosemgrep: c_misc_rule-fopen-open
+    const int fd=open(image.path,O_RDONLY|O_CLOEXEC|O_NONBLOCK);if(fd<0)return false;
     struct stat st{};bool ok=fstat(fd,&st)==0&&StatMatches(image,st);
     auto* dst=static_cast<uint8_t*>(out);size_t done=0;
     while(ok&&done<length){const ssize_t n=pread(fd,dst+done,length-done,off_t(fileOffset+done));

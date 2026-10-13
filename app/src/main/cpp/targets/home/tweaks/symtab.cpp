@@ -703,6 +703,8 @@ bool SymbolIndex::EnsureLoaded(const Image& image, uint64_t budgetMs) {
         return false;
     }
     Elf64_Ehdr deh{};
+    // debugSize was checked against the fixed destination size above.
+    // nosemgrep: c_buffer_rule-memcpy-CopyMemory
     memcpy(&deh, debug.data(), sizeof(deh));
     if (memcmp(deh.e_ident, ELFMAG, SELFMAG) != 0 || deh.e_ident[EI_CLASS] != ELFCLASS64 ||
         deh.e_ident[EI_DATA] != ELFDATA2LSB || deh.e_ident[EI_VERSION] != EV_CURRENT ||
@@ -713,6 +715,8 @@ bool SymbolIndex::EnsureLoaded(const Image& image, uint64_t budgetMs) {
         return false;
     }
     std::vector<Elf64_Shdr> debugSections(deh.e_shnum);
+    // BytesInBuffer validated the full table; the destination has exactly e_shnum entries.
+    // nosemgrep: c_buffer_rule-memcpy-CopyMemory
     memcpy(debugSections.data(), debug.data() + deh.e_shoff, debugSections.size() * sizeof(Elf64_Shdr));
     const Elf64_Shdr* dsh = debugSections.data();
 
@@ -750,6 +754,8 @@ bool SymbolIndex::EnsureLoaded(const Image& image, uint64_t budgetMs) {
     for (uint32_t i = 0; i < count; ++i) {
         if ((i & 255u) == 0 && expired()) return false;
         Elf64_Sym sym{};
+        // The checked table contains count whole entries; i < count and sizeof(sym) is fixed.
+        // nosemgrep: c_buffer_rule-memcpy-CopyMemory
         memcpy(&sym, debug.data() + symtab->sh_offset + uint64_t(i) * sizeof(sym), sizeof(sym));
         // Neither a data symbol nor a truncated 64-bit address is a function root.
         if (sym.st_shndx == SHN_UNDEF || sym.st_shndx >= deh.e_shnum ||

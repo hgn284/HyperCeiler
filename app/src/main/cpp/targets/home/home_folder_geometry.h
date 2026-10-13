@@ -115,8 +115,8 @@ inline bool folder_call_target(uint32_t w,uint32_t pc,uint32_t& target){
 // InitStaticField returns a rooted object and updates a thread-table entry. Its
 // original BLR/GC PCs are untouched. Late-error saves the Dart register bank.
 template<class Read>
-inline bool folder_helper(uint32_t target,bool init,const FolderGeometryCalls& c,Read read){
-    std::vector<uint32_t> b;if(!read(target,init?19u:28u,b))return false;
+inline bool folder_helper(uint32_t target,bool init,const FolderGeometryCalls& c,Read reader){
+    std::vector<uint32_t> b;if(!reader(target,init?19u:28u,b))return false;
     if(init){
         const uint32_t exact[]={0xa9bf79fd,0xaa0f03fd,0xf81f8de2,0xb8413040,0x8b1c8000,
             0xf840701e,0xd63f03c0,0xf84085e2,0xb8417044,0xf9403f43,0x8b040863,
@@ -139,7 +139,7 @@ inline bool folder_helper(uint32_t target,bool init,const FolderGeometryCalls& c
 template<class Read>
 inline bool folder_geometry_contract(const std::array<std::vector<uint32_t>,2>& body,
     const uint32_t* va,const GridFieldOffsets& f,const FolderGeometryCalls& calls,
-    FolderGeometryContract& out,Read read){
+    FolderGeometryContract& out,Read reader){
     if(!f.usable()||!calls.config||!calls.find||!calls.transform||!calls.rx||!calls.rtl||!calls.offset)return false;
     out={};std::map<uint32_t,uint32_t> operands;
     uint32_t init_target=0,throw_target=0;
@@ -158,7 +158,7 @@ inline bool folder_geometry_contract(const std::array<std::vector<uint32_t>,2>& 
                 if(role<6){if(target!=named[role])return false;}
                 else{uint32_t& previous=role==6?init_target:throw_target;
                     if(previous&&previous!=target)return false;
-                    if(!previous&&!folder_helper(target,role==6,calls,read))return false;
+                    if(!previous&&!folder_helper(target,role==6,calls,reader))return false;
                     previous=target;}
                 continue;
             }

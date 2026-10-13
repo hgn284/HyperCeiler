@@ -56,6 +56,14 @@ for test in NativeHookElfTest NativeHookGotTest NativeHookBankTest \
   build "$test" "$ROOT/tests/nativehook/$test.cpp" && run "$test"
 done
 
+# Linux /proc maps reader/parser with bounded-I/O and malformed-input fixtures.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  build NativeMapsParseTest "$ROOT/tests/nativehook/NativeMapsParseTest.cpp" \
+    -I"$ROOT/tests/nativehook/stubs" && run NativeMapsParseTest
+else
+  printf 'SKIP NativeMapsParseTest (needs Linux /proc interfaces)\n'
+fi
+
 # --- Desktop Dart hook layers. ---
 build DockNativeRuntimeTest "$ROOT/tests/home-dock-window/DockNativeRuntimeTest.cpp" \
   && run DockNativeRuntimeTest

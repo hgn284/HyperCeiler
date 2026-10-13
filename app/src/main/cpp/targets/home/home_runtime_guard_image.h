@@ -50,7 +50,7 @@ std::optional<ImportImage> bind_imports(const nhk::elf::ElfImage& image,
     std::span<const std::byte> snapshot, const std::vector<nhk::FileMapping>& maps,
     const std::string& maps_text, std::span<const nhk::elf::ProgramSegment> segments,
     std::string_view path, uint64_t view_begin, uint64_t view_end,
-    const nhk::FileMapping& header, Reader read) {
+    const nhk::FileMapping& header, Reader reader) {
     if (header.file_offset!=view_begin || header.writable || header.inode==0
         || nhk::strip_deleted(header.path)!=path) return {};
     std::vector<nhk::ExecutableMapping> code;
@@ -95,7 +95,7 @@ std::optional<ImportImage> bind_imports(const nhk::elf::ElfImage& image,
                 const uintptr_t pc=header.begin+va;
                 const auto source=nhk::source_at(code,pc,16);
                 std::array<uint32_t,4> live{};
-                if (!source || !read(pc,live) || live[1]!=original[1]
+                if (!source || !reader(pc,live) || live[1]!=original[1]
                     || live[2]!=original[2] || live[3]!=original[3]) return {};
                 const auto address=plt_target(live,pc);
                 if (!address || *address%alignof(void*)) return {};

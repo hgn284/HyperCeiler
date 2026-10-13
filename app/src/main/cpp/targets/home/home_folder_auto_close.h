@@ -46,10 +46,10 @@ inline std::optional<size_t> resolve_folder_auto_close(std::span<const uint32_t>
     if(!(gate<reg_at && reg_at<open_at && open_at<close_at))return {};
     return gate*4;
 }
-template<class Read> bool read_folder_auto_close(Read read,bool& enabled,bool optional=true) {
+template<class Read> bool read_folder_auto_close(Read reader,bool& enabled,bool optional=true) {
     int32_t magic=0,flag=0;enabled=false;
-    if(!read(magic))return optional;
-    if(magic!=int32_t(kFolderAutoCloseMagic)||!read(flag)||(flag!=0&&flag!=1))return false;
+    if(!reader(magic))return optional;
+    if(magic!=int32_t(kFolderAutoCloseMagic)||!reader(flag)||(flag!=0&&flag!=1))return false;
     enabled=flag==1;return true;
 }
 } // namespace home_layout

@@ -23,6 +23,7 @@
 #include "nhk_base.h"
 
 #include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <optional>
 #include <span>

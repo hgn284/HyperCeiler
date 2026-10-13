@@ -19,11 +19,11 @@ inline constexpr int32_t kWidgetMoveMagic = 0x48435731; // HCW1; appended after 
 // arm must equal the preceding first-page rejection, and the following pointer
 // null check must remain intact. Do not skip the whole precondition block.
 template <typename ReadWords>
-size_t widget_move_editing_gate_offset(size_t bytes, ReadWords read,
+size_t widget_move_editing_gate_offset(size_t bytes, ReadWords reader,
     uint32_t base, uint32_t value_callee) {
     std::vector<uint32_t> code;
     if (!value_callee || !bytes || bytes > (1u << 20) || (bytes & 3)
-        || !read(bytes, code) || code.size() != bytes / 4) return SIZE_MAX;
+        || !reader(bytes, code) || code.size() != bytes / 4) return SIZE_MAX;
     const auto destination = [](size_t i, uint32_t word) -> int64_t {
         const uint32_t raw = (word >> 5) & 0x3fff;
         const int64_t displacement = raw & 0x2000 ? int64_t(raw) - 0x4000 : raw;
@@ -75,11 +75,11 @@ size_t widget_move_editing_gate_offset(size_t bytes, ReadWords read,
 // Locate the model-flag rejection sharing the named span check's reject arm. Field magnitude
 // is not identity: another flag can move above 0x80, and the MIUI flag can move below it.
 template <typename ReadWords>
-size_t widget_move_gate_offset(size_t bytes, ReadWords read, int32_t *flag_field = nullptr,
+size_t widget_move_gate_offset(size_t bytes, ReadWords reader, int32_t *flag_field = nullptr,
     uint32_t base = 0, uint32_t span_callee = 0) {
     if (flag_field) *flag_field = 0;
     std::vector<uint32_t> code;
-    if (!bytes || bytes > (1u << 20) || (bytes & 3) || !read(bytes, code)
+    if (!bytes || bytes > (1u << 20) || (bytes & 3) || !reader(bytes, code)
         || code.size() != bytes / 4) return SIZE_MAX;
     const auto test = [](uint32_t word) { return (word & 0xfff8001fu) == 0x37200000u; };
     const auto destination = [](size_t i, uint32_t word) -> int64_t {
@@ -115,11 +115,11 @@ size_t widget_move_gate_offset(size_t bytes, ReadWords read, int32_t *flag_field
 }
 
 template <typename Read>
-bool read_widget_move_extension(Read read, bool &enabled) {
+bool read_widget_move_extension(Read reader, bool &enabled) {
     int32_t magic = 0, flag = 0;
     enabled = false;
-    if (!read(magic)) return true; // Old endpoints have no trailing extension.
-    if (magic != kWidgetMoveMagic || !read(flag) || (flag != 0 && flag != 1)) return false;
+    if (!reader(magic)) return true; // Old endpoints have no trailing extension.
+    if (magic != kWidgetMoveMagic || !reader(flag) || (flag != 0 && flag != 1)) return false;
     enabled = flag == 1;
     return true;
 }
@@ -128,15 +128,15 @@ bool read_widget_move_extension(Read read, bool &enabled) {
 // One aligned instruction: no trampoline, Dart stack/heap edit, allocation or timer.
 // Reject foreign bytes; undo even a writer that changed memory before returning failure.
 template <typename Read, typename Write>
-bool apply_widget_move_word(uintptr_t address, bool enabled, Read read, Write write,
+bool apply_widget_move_word(uintptr_t address, bool enabled, Read reader, Write write,
     uint32_t original = kWidgetMoveOriginal) {
     uint32_t before = 0, after = 0;
     if (!address || (address & 3) || (original & 0xFFF8001Fu) != 0x37200000u
-        || !read(address, before)
+        || !reader(address, before)
         || (before != original && before != kWidgetMoveReplacement)) return false;
     const uint32_t wanted = enabled ? kWidgetMoveReplacement : original;
     if (before == wanted) return true;
-    if (write(address, wanted) && read(address, after) && after == wanted) return true;
+    if (write(address, wanted) && reader(address, after) && after == wanted) return true;
     (void) write(address, before);
     return false;
 }

@@ -21,14 +21,14 @@ inline bool valid_folder_layout(const FolderLayoutConfig &c) {
         && c.landscape_padding >= 0 && c.landscape_padding <= 450
         && c.portrait_padding >= 0 && c.portrait_padding <= 200;
 }
-template<class Read> bool read_folder_layout(Read read, FolderLayoutConfig &out, bool optional = true) {
+template<class Read> bool read_folder_layout(Read reader, FolderLayoutConfig &out, bool optional = true) {
     int32_t magic = 0;
-    if (!read(magic)) { if (optional) { out = {}; return true; } return false; }
+    if (!reader(magic)) { if (optional) { out = {}; return true; } return false; }
     if (magic != kFolderLayoutMagic) return false;
     FolderLayoutConfig c;
     for (int *p : {&c.title_center, &c.full_width, &c.padding_enabled, &c.phone_padding,
             &c.landscape_padding, &c.portrait_padding, &c.tablet}) {
-        int32_t n = 0; if (!read(n)) return false; *p = n;
+        int32_t n = 0; if (!reader(n)) return false; *p = n;
     }
     if (!valid_folder_layout(c)) return false;
     out = c; return true;

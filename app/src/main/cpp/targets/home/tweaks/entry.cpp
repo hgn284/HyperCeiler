@@ -153,12 +153,16 @@ struct CodeWordOps {
     const Image& image;
     long PageSize() { return sysconf(_SC_PAGESIZE); }
     bool Page(uintptr_t address, size_t size, nhk::CodePage& page) {
-        int fd = open("/proc/self/maps", O_RDONLY | O_CLOEXEC);
+        // Fixed kernel path, opened directly; no pathname check/use window.
+        // nosemgrep: c_misc_rule-fopen-open
+        const int fd = open("/proc/self/maps", O_RDONLY | O_CLOEXEC);
         if (fd < 0) return false;
+        std::string text; std::array<char,4096> chunk{}; bool good = true;
         try {
-            std::string text; std::array<char,4096> chunk{}; bool good = true;
             unsigned interruptions = 0;
             for (;;) {
+                // Each read uses the whole array; the append below enforces the total cap.
+                // Flawfinder: ignore
                 const ssize_t n = read(fd,chunk.data(),chunk.size());
                 if (n < 0 && errno == EINTR && ++interruptions <= 32) continue;
                 if (n < 0) { good = false; break; }
@@ -168,14 +172,17 @@ struct CodeWordOps {
                 }
                 text.append(chunk.data(),size_t(n));
             }
-            const int closed = close(fd); fd = -1;
-            if (closed != 0) good = false; // close(EINTR) must not be retried
-            return good && nhk::ParseCodePage(text,address,size,page);
         } catch (...) {
-            if (fd >= 0) (void)close(fd);
+            good = false;
+        }
+        const int closed = close(fd); // close(EINTR) must not be retried.
+        if (!good || closed != 0) return false;
+        try {
+            return nhk::ParseCodePage(text,address,size,page);
+        } catch (...) {
             return false; // Allocation/parsing faults must retain the caller journal, not escape.
         }
-}
+    }
     bool Accept(const nhk::CodePage& page) {
         return page.inode && page.inode == image.sourceInode
             && uint64_t(makedev(page.major,page.minor)) == image.sourceDevice;

@@ -97,11 +97,15 @@ int OpenCacheDirectory(bool create) {
     const unsigned user = unsigned(geteuid()) / 100000u;
     const int n = snprintf(path, sizeof(path), "/data/user/%u/com.miui.home/files", user);
     if (n <= 0 || size_t(n) >= sizeof(path)) return -1;
+    // PrivateDirectory validates ownership/mode on this pinned directory descriptor.
+    // nosemgrep: c_misc_rule-fopen-open
     int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0 && errno == ENOENT && create) {
         char* slash = strrchr(path, '/');
         if (!slash) return -1;
         *slash = '\0';
+        // Validate the opened parent before mkdirat/openat; never re-open by pathname.
+        // nosemgrep: c_misc_rule-fopen-open
         const int parent = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
         if (parent < 0) return -1;
         if (PrivateDirectory(parent) && (mkdirat(parent, "files", 0700) == 0 || errno == EEXIST))
@@ -182,6 +186,8 @@ uint64_t ImageIdentity(const Image& image) {
     const uint64_t origin = image.fromApkEntry ? image.apkEntryOffset : 0;
     const uint64_t max = uint64_t(std::numeric_limits<off_t>::max());
     if (origin > max || image.fileViewBytes > max - origin) return 0;
+    // The fstat checks below bind this descriptor to the mapped source inode and extent.
+    // nosemgrep: c_misc_rule-fopen-open
     const int fd = open(image.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) return 0;
     const auto compute = [&]() -> uint64_t {
@@ -210,7 +216,10 @@ uint64_t ImageIdentity(const Image& image) {
             || table != liveTable) return 0;
         std::vector<Elf64_Phdr> loads;
         for (size_t i = 0; i < header.e_phnum; ++i) {
-            Elf64_Phdr p{}; memcpy(&p, table.data() + i * sizeof(p), sizeof(p));
+            Elf64_Phdr p{};
+            // table holds e_phnum complete headers, and i is strictly below e_phnum.
+            // nosemgrep: c_buffer_rule-memcpy-CopyMemory
+            memcpy(&p, table.data() + i * sizeof(p), sizeof(p));
             if (p.p_type != PT_LOAD || !p.p_memsz) continue;
             if (loads.size() >= 16 || !(p.p_flags & PF_R) || (p.p_flags & (PF_W | PF_X)) == (PF_W | PF_X)
                 || p.p_filesz > p.p_memsz || p.p_offset > image.fileViewBytes

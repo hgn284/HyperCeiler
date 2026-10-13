@@ -77,9 +77,9 @@ inline bool valid_label(std::u16string_view text) {
     return true;
 }
 // The same bounded reader serves Binder and last-good file snapshots. Never publish a partial list.
-template<class Read> bool read_custom_titles(Read read, std::vector<CustomTitle> &result) {
+template<class Read> bool read_custom_titles(Read reader, std::vector<CustomTitle> &result) {
     int32_t count = 0;
-    if (!read(count) || count < 0 || count > 1024) return false;
+    if (!reader(count) || count < 0 || count > 1024) return false;
     size_t units = 0;
     std::vector<CustomTitle> next;
     for (int index = 0; index < count; ++index) {
@@ -87,12 +87,12 @@ template<class Read> bool read_custom_titles(Read read, std::vector<CustomTitle>
         for (auto *text : {&row.package, &row.label}) {
             int32_t length = 0;
             const int bound = text == &row.package ? 255 : 512;
-            if (!read(length) || length <= 0 || length > bound
+            if (!reader(length) || length <= 0 || length > bound
                 || units + static_cast<unsigned>(length) > kMaxCustomUnits) return false;
             units += length;
             for (int at = 0; at < length; ++at) {
                 int32_t unit = 0;
-                if (!read(unit) || unit <= 0 || unit > 65535) return false;
+                if (!reader(unit) || unit <= 0 || unit > 65535) return false;
                 text->push_back(static_cast<char16_t>(unit));
             }
         }
