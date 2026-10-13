@@ -11,6 +11,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -35,7 +36,8 @@ std::filesystem::path root;
 std::vector<uint8_t> live;
 uint32_t uid=10001;
 struct Node {uint32_t mode=S_IFREG|0600,owner=10001,gid=10001;uint64_t ino=111,epoch=1;};
-struct Handle {FILE* file=nullptr;std::string name;bool dir=false;};
+// The descriptor table owns streams, including during fixture exceptions.
+struct Handle {std::shared_ptr<FILE> file;std::string name;bool dir=false;};
 std::map<std::string,Node> nodes;
 std::map<int,Handle> handles;
 int nextFd=5;unsigned preCalls=0,sourceReads=0,linksFollowed=0;size_t maxRead=0;
@@ -70,8 +72,9 @@ int mock_open(const char* path,int flags,unsigned mode=0){
  if((flags&O_EXCL)&&exists){errno=EEXIST;return -1;}
  if(!exists&&!(flags&O_CREAT)){errno=ENOENT;return -1;}
  if(k=="source"&&swapSource)nodes[k].ino=222;
- FILE* f=std::fopen((root/k).string().c_str(),flags&O_WRONLY?"wb":"rb");
- if(!f){errno=EIO;return -1;}
+ FILE* raw = std::fopen((root/k).string().c_str(), flags & O_WRONLY ? "wb" : "rb");
+ if (!raw) { errno = EIO; return -1; }
+ auto f = std::shared_ptr<FILE>(raw, &std::fclose);
  if(flags&O_CREAT){nodes[k].mode=S_IFREG|mode;nodes[k].owner=uid;nodes[k].gid=uid;}
  int fd=nextFd++;handles[fd]={f,k,false};return fd;
 }
@@ -84,6 +87,7 @@ int mock_mkdirat(int fd,const char*,unsigned){if(!handles.contains(fd)){errno=EB
 int mock_fstat(int fd,fixture_stat* out){
  if(statFault||!handles.contains(fd)){errno=EIO;return -1;}
  const auto& h=handles[fd];*out={};
+ out->st_mtim = fixture_time{}; // Keep the independent mtime clock stable.
  if(h.dir){out->st_mode=S_IFDIR|0700;out->st_uid=dirBad?uid+1:uid;out->st_gid=uid;return 0;}
  const auto& n=nodes[h.name];out->st_mode=n.mode;out->st_uid=n.owner;out->st_gid=n.gid;out->st_ino=n.ino;
  out->st_size=int64_t(std::filesystem::file_size(root/h.name));out->st_ctim.tv_nsec=int64_t(n.epoch);
@@ -97,10 +101,10 @@ int64_t perform_read(int fd,void* out,size_t want,bool at,fixture_off_t offset){
  if(!handles.contains(fd)||handles[fd].dir){errno=EBADF;return -1;}
  if(readEintr){readEintr=false;errno=EINTR;return -1;}
  if(readFault){errno=EIO;return -1;}
- auto& h=handles[fd];if(at){if(offset<0 || _fseeki64(h.file,offset,SEEK_SET)){errno=EIO;return -1;}++preCalls;}
+ auto& h=handles[fd];if(at){if(offset<0 || _fseeki64(h.file.get(),offset,SEEK_SET)){errno=EIO;return -1;}++preCalls;}
  maxRead=std::max(maxRead,want);if(h.name=="source"||h.name=="real")++sourceReads;
  if(shortIO)want=std::min(want,size_t(7));
- size_t n=std::fread(out,1,want,h.file);
+ size_t n=std::fread(out,1,want,h.file.get());
  if(lateMutation&&h.name=="source"&&at&&offset>128)++nodes[h.name].epoch;
  if(nested&&!nesting&&h.name=="cacheA"){nested=false;nesting=true;nested_read();nesting=false;}
  return int64_t(n);
@@ -111,7 +115,7 @@ int64_t mock_write(int fd,const void* data,size_t n){
  if(writeEintr){writeEintr=false;errno=EINTR;return -1;}
  if(writeFault){errno=EIO;return -1;}if(zeroWrite)return 0;
  if(shortIO)n=std::min(n,size_t(7));
- auto& h=handles.at(fd);auto size=std::fwrite(data,1,n,h.file);std::fflush(h.file);return int64_t(size);
+ auto& h=handles.at(fd);auto size=std::fwrite(data,1,n,h.file.get());std::fflush(h.file.get());return int64_t(size);
 }
 int mock_fchmod(int fd,unsigned mode){if(chmodFault){errno=EPERM;return -1;}nodes[handles.at(fd).name].mode=S_IFREG|mode;return 0;}
 int mock_fsync(int fd){
@@ -120,7 +124,7 @@ int mock_fsync(int fd){
 }
 int mock_close(int fd){
  if(!handles.contains(fd)){errno=EBADF;return -1;}
- auto h=handles[fd];handles.erase(fd);if(h.file)std::fclose(h.file);
+ auto h=handles[fd];handles.erase(fd);h.file.reset();
  if(closeFault){errno=EINTR;return -1;}return 0;
 }
 int mock_unlink(const char* path){auto k=key(path);bool r=std::filesystem::remove(root/k);nodes.erase(k);if(!r){errno=ENOENT;return -1;}return 0;}

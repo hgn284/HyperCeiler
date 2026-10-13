@@ -13,7 +13,7 @@ struct LocatedSites {bool ok9=false,ok16sq=false;bool AnyOk()const{return ok9;}}
 struct AppliedPatch {};
 struct PlanResult {};
 struct PatchStats {};
-struct CodeView {CodeView(const Image&) {}};
+struct CodeView {explicit CodeView(const Image&) {}};
 constexpr uint32_t kWantFolderCols=2;
 int identityCalls=0,symbolCalls=0,scanCalls=0,resets=0;
 uint64_t identityResult=0;
@@ -32,6 +32,7 @@ size_t SitePackPaths(const char**,size_t){return 0;}
 bool LoadSitePack(const char*,LocatedSites*){return false;}
 struct FeatureSlot {uint32_t num;};
 constexpr FeatureSlot kFeatureSlots[]={{9}};
+static_assert(kFeatureSlots[0].num == 9);
 void KeepOnlyFeature(LocatedSites*,uint32_t){}
 bool ValidateSitesShape(const CodeView&,LocatedSites&){return true;}
 bool ValidateSites(const CodeView&,LocatedSites&){return true;}

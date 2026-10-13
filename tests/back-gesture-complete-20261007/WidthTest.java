@@ -1,3 +1,5 @@
+package com.sevtinge.hyperceiler.tests;
+
 import com.sevtinge.hyperceiler.libhook.rules.systemui.navigation.BackGestureWidthState;
 public class WidthTest {
  static int checks;static void ok(boolean b){checks++;if(!b)throw new AssertionError(checks);}

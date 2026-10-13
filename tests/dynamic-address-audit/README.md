@@ -6,8 +6,10 @@ all newly added folder features. A runtime-derived address still needs its
 consumer/control-flow/ABI/lifetime contract proved.
 
 Additional production-binder coverage:
+
 - `tests/os4-audit-big-folder-20261005/verify.py`: 1506 checks, dynamic strategy
   fields, full original continuation, live parent-frame ratio, settings race.
+
 - `tests/os4-audit-folder-geometry-20261005/verify.py`: real ELF, independently
   relocated callers/callees, moved grid fields, NOP-shifted scalar windows,
   incoming branch refusal, anonymous runtime helper bodies and atomic admission.

@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Locate the assistant capsule in two launcher screenshots and report how far it moved.
+"""
+Locate the assistant capsule in two launcher screenshots and report how far it moved.
 
 The capsule is the dark rounded pill just above the dock. In a 1200x2670 frame that is the
 bottom band, so the scan is restricted there and looks for rows whose dark-pixel run is wide
 enough to be the pill but not the dock itself.
 """
+
 import sys
 
 from PIL import Image
 
-BOTTOM_START = 0.72   # fraction of the frame height where the capsule band begins
-DOCK_START = 0.885    # the dock's frosted panel starts here; stop before it
-DARK = 110            # luminance threshold for "dark pill pixel"
-MIN_RUN = 90          # a horizontal dark run shorter than this is not the pill
+BOTTOM_START = 0.72  # fraction of the frame height where the capsule band begins
+DOCK_START = 0.885  # the dock's frosted panel starts here; stop before it
+DARK = 110  # luminance threshold for "dark pill pixel"
+MIN_RUN = 90  # a horizontal dark run shorter than this is not the pill
 
 
 def luminance(pixel):
@@ -47,7 +49,9 @@ def main(argv):
     off_path, on_path = argv[1], argv[2]
     off_band, width, height = capsule_rows(off_path)
     on_band, _, _ = capsule_rows(on_path)
-    print(f"frame {width}x{height}, dark run >= {MIN_RUN}px in the {BOTTOM_START:.0%}..{DOCK_START:.0%} band")
+    print(
+        f"frame {width}x{height}, dark run >= {MIN_RUN}px in the {BOTTOM_START:.0%}..{DOCK_START:.0%} band"
+    )
     print(f"  off (knob disabled) : capsule rows {off_band}")
     print(f"  on  (knob enabled)  : capsule rows {on_band}")
     if off_band and on_band:

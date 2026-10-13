@@ -1,8 +1,22 @@
+import hashlib
+import json
+import sys
+import zipfile
 from pathlib import Path
-import sys,json,zipfile,hashlib
-here=Path(__file__).resolve().parent
-root=Path(sys.argv[1]).resolve()
-assert root.is_dir()
+
+
+def _require(condition, message=None):
+    """Keep fixture and rollback checks active when Python uses -O."""
+    if not condition:
+        if message is None:
+            raise AssertionError
+        raise AssertionError(message())
+
+
+here = Path(__file__).resolve().parent
+root = Path(sys.argv[1]).resolve()
+_require((root.is_dir()))
+
 
 # Hash what git would store, not the raw working-tree bytes. With
 # core.autocrlf=true and `* text=auto eol=lf` in .gitattributes, git normalises
@@ -12,19 +26,27 @@ assert root.is_dir()
 # the hashes were taken from - a false positive, not the drift this is meant to
 # catch. Only the worktree side is normalised: the archives keep whatever bytes
 # were captured, and their own hashes were recorded the same way.
-def worktree_digest(data:bytes)->str:
-    return hashlib.sha256(data.replace(b'\r\n',b'\n')).hexdigest()
+def worktree_digest(data: bytes) -> str:
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
-def raw_digest(data:bytes)->str:
+
+def raw_digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
-modified=json.loads((here/'modified-hashes.json').read_text())
-for n,s in modified.items():
-    p=(root/n).resolve();assert p.is_relative_to(root)
-    assert p.is_file() and worktree_digest(p.read_bytes())==s, 'target differs: '+n
-with zipfile.ZipFile(here/'ORIGINAL_FILE.zip') as z:
+
+modified = json.loads((here / "modified-hashes.json").read_text())
+for n, s in modified.items():
+    p = (root / n).resolve()
+    _require((p.is_relative_to(root)))
+    _require(
+        (p.is_file() and worktree_digest(p.read_bytes()) == s),
+        lambda: ("target differs: " + n),
+    )
+with zipfile.ZipFile(here / "ORIGINAL_FILE.zip") as z:
     for n in modified:
-        p=root/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
-original=json.loads((here/'original-hashes.json').read_text())
-assert all(raw_digest((root/n).read_bytes())==s for n,s in original.items())
-print('ROLLBACK_HASHES=PASS; restored five original files')
+        p = root / n
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(z.read(n))
+original = json.loads((here / "original-hashes.json").read_text())
+_require((all(raw_digest((root / n).read_bytes()) == s for n, s in original.items())))
+print("ROLLBACK_HASHES=PASS; restored five original files")

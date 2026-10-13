@@ -15,12 +15,12 @@ struct Process {
 } g;
 int checks=0,failed=0,cases=0;const char*name="";
 void ok(bool x,const char*why){checks++;if(!x){failed++;std::printf("FAIL %s: %s\n",name,why);}}
-bool read(const Slot&,Words&w){g.reads++;if(g.failRead==g.reads)return false;w=g.live;return true;}
+bool read_slot_words(const Slot&,Words&w){g.reads++;if(g.failRead==g.reads)return false;w=g.live;return true;}
 bool write(uintptr_t,const Words&w){g.writes++;if(!g.noWrite&&(!g.failWrite||g.copyOnFailure))g.live=w;return !g.failWrite;}
 int install(void*,void*,void**p){g.installs++;if(g.rc){if(g.foreignBackendFailure)g.live=g.foreign;if(g.changedFailurePointer)*p=(void*)0xBADF00D;if(g.clearFailurePointer)*p=nullptr;return g.rc;}if(!g.noPatch)g.live=g.patch;*p=g.noContinuation?nullptr:g.continuation;return 0;}
 int unhook(void*){g.unhooks++;if(g.live!=g.original)g.freedWhilePatch=true;return g.unhookRc;}
 bool protect(uintptr_t,size_t){if(g.foreignProtect)g.live=g.foreign;return true;}
-nhk::InlineHookHost<4> host(){nhk::InlineHookHost<4> h;h.read_slot=read;h.write_words=write;h.hook_install=install;h.hook_uninstall=unhook;h.protect_range=protect;h.on_guard=[](const nhk::HookEvent&e){g.event=e.reason;};return h;}
+nhk::InlineHookHost<4> host(){nhk::InlineHookHost<4> h;h.read_slot=read_slot_words;h.write_words=write;h.hook_install=install;h.hook_uninstall=unhook;h.protect_range=protect;h.on_guard=[](const nhk::HookEvent&e){g.event=e.reason;};return h;}
 Slot fresh(){Slot s;s.address=0x1000;s.replacement=(void*)0xbeef;s.original=&g.continuation;s.original_words=g.original;return s;}
 Slot armed(){auto s=fresh();s.registered=true;s.patch_known=true;s.patch_words=g.patch;g.live=g.patch;
 #ifdef HC_NEW_BANK

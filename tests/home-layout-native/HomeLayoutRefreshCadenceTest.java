@@ -16,11 +16,18 @@ public final class HomeLayoutRefreshCadenceTest {
         check(ContentResolver.queryCount() >= count, "notification did not refresh snapshot");
     }
 
+    // Inspect private constants without widening the production API for a host test.
+    @SuppressWarnings("PMD.AvoidAccessibilityAlteration")
+    private static java.lang.reflect.Field fixtureField(String name)
+            throws ReflectiveOperationException {
+        var field = HomeLayoutNativeEndpointOS4.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field;
+    }
+
     public static void main(String[] args) throws Exception {
-        var specs = HomeLayoutNativeEndpointOS4.class.getDeclaredField("PREF_KEYS");
-        specs.setAccessible(true);
-        var interval = HomeLayoutNativeEndpointOS4.class.getDeclaredField("PREFS_REFRESH_MS");
-        interval.setAccessible(true);
+        var specs = fixtureField("PREF_KEYS");
+        var interval = fixtureField("PREFS_REFRESH_MS");
         check(interval.getLong(null) == 60_000L, "idle fallback is not one minute");
         ContentResolver.setSpecs((String[][]) specs.get(null));
         ContentResolver.setRows(java.util.Map.of(

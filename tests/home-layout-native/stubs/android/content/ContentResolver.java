@@ -4,12 +4,15 @@ package android.content;
 public class ContentResolver {
     private static final java.util.Map<String, Object> ROWS = new java.util.HashMap<>();
     private static String[][] specs = new String[0][];
-    private static int failureIndex = -1, queries;
+    private static int failureIndex = -1;
+    private static int queries;
     private static String failureMode;
-    private static boolean wrongSchema, emptyBatch;
+    private static boolean wrongSchema;
+    private static boolean emptyBatch;
     private static android.database.ContentObserver observer;
     private static String observedUri;
-    private static int registrations, unregistrations;
+    private static int registrations;
+    private static int unregistrations;
     public static java.util.function.Consumer<String> afterRead;
     public void registerContentObserver(android.net.Uri uri, boolean descendants,
         android.database.ContentObserver candidate) {

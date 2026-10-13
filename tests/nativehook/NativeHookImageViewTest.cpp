@@ -196,7 +196,7 @@ int main() {
         for (unsigned i = 0; i < 100; ++i) {
             nhk::FileMapping m{};
             m.begin = 0x100000 + i * 4096; m.end = m.begin + 4096;
-            m.file_offset = i * 4096; m.executable = true; m.inode = 12; m.path = "image";
+            m.file_offset = static_cast<uint64_t>(i) * 4096; m.executable = true; m.inode = 12; m.path = "image";
             split.push_back(m);
         }
         const std::vector<nhk::ImageContainer> owners{{"image", 0, 100 * 4096}};
