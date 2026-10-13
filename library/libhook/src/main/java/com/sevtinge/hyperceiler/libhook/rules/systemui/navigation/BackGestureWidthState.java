@@ -2,7 +2,10 @@ package com.sevtinge.hyperceiler.libhook.rules.systemui.navigation;
 
 /** Original resource widths are the baseline; repeated notifications never compound. */
 public final class BackGestureWidthState {
-    public int left, right, appliedLeft, appliedRight;
+    public int left;
+    public int right;
+    public int appliedLeft;
+    public int appliedRight;
     public BackGestureWidthState(int left, int right) { reset(left, right); }
     public void reset(int l, int r) { left = l; right = r; appliedLeft = l; appliedRight = r; }
     public static int normalize(int percent) { return percent >= 100 && percent <= 400 ? percent : 100; }

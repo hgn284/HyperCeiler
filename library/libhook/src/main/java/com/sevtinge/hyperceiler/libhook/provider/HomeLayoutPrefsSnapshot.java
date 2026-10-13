@@ -139,7 +139,8 @@ public final class HomeLayoutPrefsSnapshot {
     }
 
     private static int readLength(String text, int[] at, int max) {
-        int value = 0, start = at[0];
+        int value = 0;
+        int start = at[0];
         while (at[0] < text.length() && text.charAt(at[0]) != ':') {
             char digit = text.charAt(at[0]++);
             if (digit < '0' || digit > '9') throw new IllegalArgumentException("title length");
@@ -161,17 +162,23 @@ public final class HomeLayoutPrefsSnapshot {
         return true;
     }
 
+    private static boolean validCustomTitle(String pkg, String label) {
+        return pkg.length() <= 255 && pkg.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+            && !label.isEmpty() && label.length() <= 512 && validTitle(label);
+    }
+
     /** Existing AppEditManager records are package + ฿ + title + ฿ + random suffix. */
     public static String[][] customTitles(String packet) {
         if (packet == null) return new String[0][];
-        java.util.Map<String, String> names = new java.util.TreeMap<>();
+        Map<String, String> names = new java.util.TreeMap<>();
         int units = 0;
         for (String record : decodeTitleRecords(packet)) {
-            int first = record.indexOf('฿'), last = record.lastIndexOf('฿');
+            int first = record.indexOf('฿');
+            int last = record.lastIndexOf('฿');
             if (first < 1 || last <= first) continue;
-            String pkg = record.substring(0, first), label = record.substring(first + 1, last);
-            if (pkg.length() > 255 || !pkg.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
-                || label.isEmpty() || label.length() > 512 || !validTitle(label)) continue;
+            String pkg = record.substring(0, first);
+            String label = record.substring(first + 1, last);
+            if (!validCustomTitle(pkg, label)) continue;
             if (names.containsKey(pkg)) continue;
             if (units + pkg.length() + label.length() > 32768) break;
             units += pkg.length() + label.length(); names.put(pkg, label);

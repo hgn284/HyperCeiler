@@ -16,6 +16,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Uses SystemUI's existing UI/RenderThread, not a service or another HyperCeiler process. */
 class DockGlassRendererSystemUI : BaseHook() {
+    private companion object {
+        const val LOG_TAG = "HyperCeiler.DockGlass"
+    }
+
     private val installed = AtomicBoolean()
     @Volatile private var closed = false
     private var endpoint: DockGlassRendererEndpoint? = null
@@ -26,7 +30,7 @@ class DockGlassRendererSystemUI : BaseHook() {
         if (processName != "com.android.systemui") {
             // Unconditional logcat: raw Log bypasses the module log-level gate. A silent return
             // here made a previous failure mode invisible for an entire investigation round.
-            Log.i("HyperCeiler.DockGlass",
+            Log.i(LOG_TAG,
                 "SystemUI renderer skipped: process=$processName uid=${Process.myUid()}")
             return
         }
@@ -50,11 +54,9 @@ class DockGlassRendererSystemUI : BaseHook() {
         // Wrap the whole body, not just the endpoint constructor: anything thrown before the
         // register loop starts must still leave a trace, otherwise the renderer silently never
         // appears and only the client-side "dependency unavailable" retries are visible.
-        try {
-            installLocked(context)
-        } catch (error: Exception) {
+        catchingRecoverable({ installLocked(context) }) { error ->
             installed.set(false)
-            Log.w("HyperCeiler.DockGlass",
+            Log.w(LOG_TAG,
                 "SystemUI renderer setup failed uid=${Process.myUid()} pkg=${context.packageName}", error)
         }
     }
@@ -73,14 +75,14 @@ class DockGlassRendererSystemUI : BaseHook() {
                     "getService", String::class.java).invoke(null, "window") as? IBinder
                     ?: error("Window service not ready")
                 DockGlassRendererProtocol.register(window, renderer)
-                Log.i("HyperCeiler.DockGlass",
+                Log.i(LOG_TAG,
                     "SystemUI renderer registered; app process not required uid=${Process.myUid()}")
                 thread.quitSafely()
             } catch (error: Exception) {
                 if (attempt < 8) handler.postDelayed({ register(attempt + 1) },
                     minOf(500L shl attempt, 8_000L))
                 else {
-                    Log.w("HyperCeiler.DockGlass",
+                    Log.w(LOG_TAG,
                         "SystemUI renderer registration failed uid=${Process.myUid()}", error)
                     thread.quitSafely()
                 }

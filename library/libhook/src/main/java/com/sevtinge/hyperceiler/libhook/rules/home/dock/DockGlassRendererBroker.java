@@ -29,8 +29,9 @@ public final class DockGlassRendererBroker {
     private static final String CACHE = "OS4.DockGlass.SystemUIRenderer.v1";
     private static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
     private volatile IBinder renderer;
-    interface ProcessLookup { String name(int pid) throws Exception; }
     private final ProcessLookup processes;
+
+    interface ProcessLookup { String name(int pid) throws Exception; }
 
     public DockGlassRendererBroker() {
         this(DockGlassRendererBroker::processName);

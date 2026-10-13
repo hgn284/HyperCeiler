@@ -45,6 +45,10 @@ import java.util.UUID
  * "FATAL EXCEPTION IN SYSTEM PROCESS". Every asynchronous entry point therefore goes through
  * [guard], and recoverable failures are turned into a bounded retry instead of an escape.
  */
+// One owner keeps each ticket's surface, retry/readiness epochs and queued callbacks on the
+// same serial worker through close(). Splitting this lifecycle solely for size metrics would
+// distribute its cancellation and teardown invariants across multiple mutable owners.
+@Suppress("LargeClass", "TooManyFunctions")
 internal class DockGlassClient(private val rendererBroker: DockGlassRendererBroker, private val changed: () -> Unit,
     /** True while the display is rotated or has only just returned to natural rotation. */
     private val rotationSettling: () -> Boolean = { false },
@@ -263,10 +267,11 @@ internal class DockGlassClient(private val rendererBroker: DockGlassRendererBrok
             val observer = object : ContentObserver(Handler(worker.looper)) {
                 override fun onChange(selfChange: Boolean, changed: Uri?) {
                     guard("geometry notification") {
-                        if (selfChange) return@guard
-                        if (changed != null && changed.path != "/pref"
-                            && !DockGeometryRefreshGate.isGeometryKey(changed.lastPathSegment)) return@guard
-                        refreshGeometry(force = true)
+                        if (!selfChange) {
+                            val geometryChanged = changed == null || changed.path == "/pref"
+                                || DockGeometryRefreshGate.isGeometryKey(changed.lastPathSegment)
+                            if (geometryChanged) refreshGeometry(force = true)
+                        }
                     }
                 }
             }
@@ -355,24 +360,26 @@ internal class DockGlassClient(private val rendererBroker: DockGlassRendererBrok
     }
 
     private fun queueGeometryRead(context: Context, delay: Long) {
-        val posted = worker.postDelayed({
-            if (closed || !geometryRefreshGate.begin(SystemClock.uptimeMillis())) return@postDelayed
-            var success = false
-            try {
-                guard("geometry query") {
-                    catchingRecoverable({
-                        val cursor = context.contentResolver.query(Uri.parse("$uri/dock_geometry"),
-                            null, null, null, null)
-                        if (cursor == null) noteGeometryFailure("null cursor")
-                        else success = cursor.use(::applyGeometrySnapshot)
-                    }) { noteGeometryFailure("${it.javaClass.simpleName}: ${it.message?.take(100)}") }
-                }
-            } finally {
-                val next = geometryRefreshGate.finish(success, SystemClock.uptimeMillis())
-                if (!closed && next >= 0) queueGeometryRead(context, next)
-            }
-        }, delay)
+        val posted = worker.postDelayed({ readGeometryIfPending(context) }, delay)
         if (!posted) geometryRefreshGate.rejected()
+    }
+
+    private fun readGeometryIfPending(context: Context) {
+        if (closed || !geometryRefreshGate.begin(SystemClock.uptimeMillis())) return
+        var success = false
+        try {
+            guard("geometry query") {
+                catchingRecoverable({
+                    val cursor = context.contentResolver.query(Uri.parse("$uri/dock_geometry"),
+                        null, null, null, null)
+                    if (cursor == null) noteGeometryFailure("null cursor")
+                    else success = cursor.use(::applyGeometrySnapshot)
+                }) { noteGeometryFailure("${it.javaClass.simpleName}: ${it.message?.take(100)}") }
+            }
+        } finally {
+            val next = geometryRefreshGate.finish(success, SystemClock.uptimeMillis())
+            if (!closed && next >= 0) queueGeometryRead(context, next)
+        }
     }
 
     /**
@@ -388,13 +395,8 @@ internal class DockGlassClient(private val rendererBroker: DockGlassRendererBrok
         record("geometry query refused=$reason")
     }
 
-    /**
-     * Apply one `dock_geometry` cursor, reporting an empty answer as a refusal.
-     *
-     * <p>Split out of [refreshGeometry] so the cursor's lifetime stays inside `use` and the read
-     * path needs no early return across the inline catch helper.
-     */
     private fun applyGeometrySnapshot(cursor: Cursor): Boolean {
+        // The caller keeps the cursor inside use; an empty answer counts as a failed read.
         if (!cursor.moveToFirst()) {
             // Reached the provider, but it answered nothing: also a refusal.
             noteGeometryFailure("empty cursor")

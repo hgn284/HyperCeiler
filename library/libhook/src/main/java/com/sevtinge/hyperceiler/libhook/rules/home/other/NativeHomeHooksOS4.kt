@@ -71,11 +71,13 @@ object NativeHomeHooksOS4 {
             .onFailure { stage("title-size push failed detail=${describe(it)}") }
     }
 
+    /** Push the clamped drawer title size from the physical provider revision to the native hook. */
     fun setDrawerTitleSize(sp: Int) {
         runCatching { nativeSetDrawerTitleSize(sp.coerceIn(0, 20)) }
             .onFailure { stage("drawer-title-size push failed detail=${describe(it)}") }
     }
 
+    /** Push the provider's ARGB title color, including the native default sentinel, unchanged. */
     fun setTitleColor(argb: Int) {
         runCatching { nativeSetTitleColor(argb) }
             .onFailure { stage("title-color push failed detail=${describe(it)}") }

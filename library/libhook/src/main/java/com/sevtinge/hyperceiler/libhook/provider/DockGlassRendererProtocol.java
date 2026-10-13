@@ -29,7 +29,8 @@ public final class DockGlassRendererProtocol {
     public static Bundle call(IBinder renderer, String method, String id, Bundle args)
             throws RemoteException {
         if (!allowed(method)) throw new IllegalArgumentException("Unknown renderer operation");
-        Parcel data = Parcel.obtain(), reply = Parcel.obtain();
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             data.writeString(method); data.writeString(id); data.writeBundle(args);
@@ -44,7 +45,8 @@ public final class DockGlassRendererProtocol {
     }
 
     public static void register(IBinder window, IBinder renderer) throws RemoteException {
-        Parcel data = Parcel.obtain(), reply = Parcel.obtain();
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
         try {
             data.writeInterfaceToken(WINDOW_DESCRIPTOR);
             data.writeInt(VERSION); data.writeStrongBinder(renderer);

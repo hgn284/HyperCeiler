@@ -59,38 +59,39 @@ object HomeSettingsOS4 : BaseHook() {
         "content://com.sevtinge.hyperceiler.provider.sharedprefs/pref"
     )
     private var titleObserver: ContentObserver? = null
+    private val titlePreferenceKeys = setOf(
+        "home_title_font_size", "home_drawer_title_font_size", "home_title_title_color"
+    )
 
     private fun hookTitleSettings() {
         Activity::class.java.findMethod {
             name("onCreate")
             parameterTypes(Bundle::class.java)
         }.createBeforeHook { param ->
-            val activity = param.thisObject as Activity
-            if (activity.componentName.className != LAUNCHER_ACTIVITY) return@createBeforeHook
-            val resolver = activity.applicationContext.contentResolver
-            publishTitleSettings(resolver)
-            if (titleObserver != null) return@createBeforeHook
-            val handler = Handler(Looper.getMainLooper())
-            val update = Runnable { publishTitleSettings(resolver) }
-            val observer = object : ContentObserver(handler) {
-                override fun onChange(selfChange: Boolean, uri: Uri?) {
-                    val segment = uri?.lastPathSegment
-                    if (segment != null && segment != "prefs_key_home_title_font_size"
-                        && segment != "home_title_font_size"
-                        && segment != "prefs_key_home_drawer_title_font_size"
-                        && segment != "home_drawer_title_font_size"
-                        && segment != "prefs_key_home_title_title_color"
-                        && segment != "home_title_title_color") return
-                    handler.removeCallbacks(update)
-                    handler.postDelayed(update, 150)
-                }
+            publishAndObserveTitleSettings(param.thisObject as Activity)
+        }
+    }
+
+    private fun publishAndObserveTitleSettings(activity: Activity) {
+        if (activity.componentName.className != LAUNCHER_ACTIVITY) return
+        val resolver = activity.applicationContext.contentResolver
+        publishTitleSettings(resolver)
+        if (titleObserver != null) return
+        val handler = Handler(Looper.getMainLooper())
+        val update = Runnable { publishTitleSettings(resolver) }
+        val observer = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                val segment = uri?.lastPathSegment?.removePrefix("prefs_key_")
+                if (segment != null && segment !in titlePreferenceKeys) return
+                handler.removeCallbacks(update)
+                handler.postDelayed(update, 150)
             }
-            runCatching {
-                resolver.registerContentObserver(titleChangesUri, true, observer)
-                titleObserver = observer
-            }.onFailure {
-                XposedLog.e(TAG, lpparam.packageName, "OS4 title observer unavailable", it)
-            }
+        }
+        runCatching {
+            resolver.registerContentObserver(titleChangesUri, true, observer)
+            titleObserver = observer
+        }.onFailure {
+            XposedLog.e(TAG, lpparam.packageName, "OS4 title observer unavailable", it)
         }
     }
 

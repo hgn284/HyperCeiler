@@ -35,7 +35,8 @@ public final class DockGlassRendererEndpoint extends Binder {
             throw new SecurityException("Only the system Dock client may render glass");
         }
         data.enforceInterface(DockGlassRendererProtocol.DESCRIPTOR);
-        String method = data.readString(), id = data.readString();
+        String method = data.readString();
+        String id = data.readString();
         Bundle args = data.readBundle(DockGlassRendererEndpoint.class.getClassLoader());
         data.enforceNoDataAvail();
         if (closed || !DockGlassRendererProtocol.allowed(method)) {

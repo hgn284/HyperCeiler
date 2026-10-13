@@ -580,11 +580,6 @@ object StatusBarClockNew : BaseHook() {
             }
         }
 
-        /**
-         * Run [block] on the main thread. Falls back to an inline call when the Looper is
-         * already ours; otherwise posts (and falls back to [Choreographer]'s own post path if
-         * the main Looper is not ready yet, which can happen during very early boot).
-         */
         private fun runOnMainThread(block: () -> Unit) {
             val mainLooper = Looper.getMainLooper()
             if (mainLooper == null) {

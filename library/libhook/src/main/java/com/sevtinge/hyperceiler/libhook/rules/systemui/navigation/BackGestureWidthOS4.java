@@ -23,7 +23,8 @@ import java.util.WeakHashMap;
 /** SystemUI rejects downs beyond its resource edge even when Home's native window accepts them. */
 public final class BackGestureWidthOS4 extends BaseHook {
     private final Map<Object, BackGestureWidthState> states = new WeakHashMap<>();
-    private Field left, right;
+    private Field left;
+    private Field right;
     private volatile int percent = 100;
     private volatile boolean closed;
     private Context context;
@@ -41,7 +42,7 @@ public final class BackGestureWidthOS4 extends BaseHook {
             resources = type.getDeclaredMethod("updateCurrentUserResources");
             if (left.getType() != int.class || right.getType() != int.class
                 || resources.getReturnType() != void.class) return;
-            left.setAccessible(true); right.setAccessible(true);
+            makeEdgeWidthFieldsAccessible();
         } catch (ReflectiveOperationException error) {
             XposedLog.w(TAG, "edge resource shape not validated: " + error); return;
         }
@@ -67,6 +68,14 @@ public final class BackGestureWidthOS4 extends BaseHook {
         registerHotReloadCleanup(() -> { closed = true; request.incrementAndGet(); restoreAll(); });
         XposedLog.i(TAG, "validated original edge widths consumer; initial=" + percent);
     }
+    // This Xposed hook deliberately accesses two validated private framework int fields;
+    // SystemUI exposes no public API for changing the original gesture-width resource values.
+    @SuppressWarnings("PMD.AvoidAccessibilityAlteration")
+    private void makeEdgeWidthFieldsAccessible() {
+        left.setAccessible(true);
+        right.setAccessible(true);
+    }
+
     private void attach(Context c) {
         if (closed || context != null) return;
         context = c.getApplicationContext();
@@ -106,7 +115,8 @@ public final class BackGestureWidthOS4 extends BaseHook {
     private synchronized void refresh(Object target, boolean resourceReset) {
         if (closed || target == null) return;
         try {
-            int l = left.getInt(target), r = right.getInt(target);
+            int l = left.getInt(target);
+            int r = right.getInt(target);
             BackGestureWidthState state = states.get(target);
             if (state == null) { state = new BackGestureWidthState(l, r); states.put(target, state); }
             else if (resourceReset) state.reset(l, r);

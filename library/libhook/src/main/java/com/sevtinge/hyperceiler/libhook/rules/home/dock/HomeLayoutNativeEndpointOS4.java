@@ -19,6 +19,12 @@ import java.io.IOException;
 public final class HomeLayoutNativeEndpointOS4 {
     public static final int TRANSACTION_CODE = 0x0048434C;
     public static final int ACK = 0x48434C34;
+    public static final int FOLDER_AUTO_CLOSE_MAGIC = 0x48434641;
+    public static final int BACK_GESTURE_MAGIC = 0x48434231;
+    public static final int FOLDER_MAGIC = 0x48434631;
+    public static final int FOLDER_COUNT = 7;
+    private static final int[] FOLDER_MAX = {1, 1, 1, 50, 450, 200, 1};
+    public static final int TITLE_COUNT = 4;
     private static final String DESCRIPTOR = "android.view.IWindowManager";
     /**
      * Where the current values come from.
@@ -305,6 +311,9 @@ public final class HomeLayoutNativeEndpointOS4 {
     public record Snapshot(int acknowledgment, int gridEnabled, int cellX, int cellY,
         int[] knobEnabled, int[] knobDeltaDp, int[] tweaks, int[] title, String[][] customTitles,
         boolean widgetAllowMove, int[] folder, int[] backGesture, boolean folderAutoClose) {
+        // Compatibility constructor mirrors the fixed native snapshot order and defaults the
+        // later folder-auto-close field; retaining it keeps existing endpoint callers compatible.
+        @SuppressWarnings("PMD.ExcessiveParameterList")
         public Snapshot(int acknowledgment, int gridEnabled, int cellX, int cellY,
             int[] knobEnabled, int[] knobDeltaDp, int[] tweaks, int[] title, String[][] customTitles,
             boolean widgetAllowMove, int[] folder, int[] backGesture) {
@@ -548,8 +557,6 @@ public final class HomeLayoutNativeEndpointOS4 {
                 boundedBack(readInt(values, "home_navigation_back_area_width", 100), 100, 400, 100)}, readBoolean(values, "home_folder_auto_close", false));
     }
 
-    public static final int FOLDER_AUTO_CLOSE_MAGIC = 0x48434641;
-    public static final int BACK_GESTURE_MAGIC = 0x48434231;
     private static int boundedBack(int value, int low, int high, int def) {
         return value >= low && value <= high ? value : def;
     }
@@ -557,9 +564,6 @@ public final class HomeLayoutNativeEndpointOS4 {
         return values != null && values.length == 2 && values[0] >= 10 && values[0] <= 100
             && values[1] >= 100 && values[1] <= 400;
     }
-    public static final int FOLDER_MAGIC = 0x48434631;
-    public static final int FOLDER_COUNT = 7;
-    private static final int[] FOLDER_MAX = {1, 1, 1, 50, 450, 200, 1};
     private static boolean validFolder(int[] values) {
         if (values == null || values.length != FOLDER_COUNT) return false;
         for (int i = 0; i < FOLDER_COUNT; i++)
@@ -582,7 +586,6 @@ public final class HomeLayoutNativeEndpointOS4 {
         return folder;
     }
 
-    public static final int TITLE_COUNT = 4;
 
     /** Number of code-patch feature values, in the order the native side reads them. */
     static final int TWEAK_COUNT = 17;
