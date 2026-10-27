@@ -124,19 +124,6 @@ class HomeDockWindow : BaseHook() {
          * 150 ms matches the sampling window [DockGlassClient.Journal] uses for its frame noise.
          */
         const val SCENE_LOG_MIN_GAP_MS = 150L
-        /**
-         * Floor between parameter probes taken from a launcher traversal.
-         *
-         * <p>The prepareSurfaces hook fires while the launcher is being animated - a shade pull,
-         * a full-screen back, a recents hand-off all traverse the launcher window on every frame -
-         * and this is where the hook picked up changed parameters. The probes are posted work
-         * whose results land on a later traversal or sweep anyway (the style and geometry clients
-         * throttle themselves), and a preference edit already lands through its own listener, so
-         * re-issuing the full burst at frame rate only added per-frame cost to the very
-         * animations the user watches. 1 s matches the sweep's own fast cadence, which is the
-         * latency this path was ever guaranteeing.
-         */
-        const val TRAVERSAL_PROBE_MIN_GAP_MS = 1_000L
     }
 
     /**
@@ -387,8 +374,6 @@ class HomeDockWindow : BaseHook() {
     private val GLASS_REBUILD_BACKOFF_MS = 2_000L
     /** Current sweep cadence; backs off while idle, resets to the fast interval on any activity. */
     @Volatile private var sweepIntervalMs = NATIVE_BIND_SWEEP_MS
-    /** Stamp for [TRAVERSAL_PROBE_MIN_GAP_MS]; 0 arms the first traversal to always probe. */
-    @Volatile private var lastProbeAtMs = 0L
 
     /**
      * Return the sweep to its fast cadence.
@@ -731,17 +716,9 @@ class HomeDockWindow : BaseHook() {
             // changed parameter. It is what makes an edit survive a desktop restart: the restart
             // rebuilds the WindowState and traverses into here, but it never re-creates the hook.
             // The style query is asynchronous and throttled; its result lands on a later traversal.
-            // The same reasoning rate-limits the burst itself: during the launcher's own
-            // animations this hook runs every frame, and an edit is either already landing
-            // through the preference listener or at worst waits one sweep cadence - the same
-            // latency the posted probes were always offering.
-            val now = SystemClock.uptimeMillis()
-            if (now - lastProbeAtMs >= TRAVERSAL_PROBE_MIN_GAP_MS) {
-                lastProbeAtMs = now
-                glassClient.refreshRevealStyle()
-                glassClient.refreshGeometry()
-                refreshSettings()
-            }
+            glassClient.refreshRevealStyle()
+            glassClient.refreshGeometry()
+            refreshSettings()
             val title = attrs.title.toString()
             synchronized(layers) {
                 if (stopped) return
